@@ -6,9 +6,68 @@ This file creates your application.
 """
 
 from app import app
-from flask import render_template, request, jsonify, send_file
+from flask import render_template, request, jsonify, send_file, send_from_directory,url_for
 import os
+from . import db
+from werkzeug.utils import secure_filename
+from app.models import Movie
+from app.forms import MovieForm
+from flask_wtf.csrf import generate_csrf
 
+
+###
+# Routing for your application.
+###
+
+@app.route('/api/v1/movies', methods=['GET'])
+def get_movies():
+    movies = Movie.query.all()
+    movie_list = []
+    for movie in movies:
+        movie_data = {
+            'id': movie.id,
+            'title': movie.title,
+            'description': movie.description,
+            'poster': url_for('get_poster', filename=movie.poster)
+        }
+        movie_list.append(movie_data)
+    return jsonify({'movies': movie_list})
+
+@app.route('/api/v1/posters/<filename>', methods=['GET'])
+def get_poster(filename):
+    return send_from_directory(os.path.join(os.getcwd(), app.config['UPLOAD_FOLDER']), filename)
+
+@app.route('/api/v1/csrf-token', methods=['GET'])
+def get_csrf():
+    return jsonify({'csrf_token': generate_csrf()})
+
+@app.route('/api/v1/movies', methods=['POST'])
+def movies():
+    form = MovieForm()
+    if form.validate():
+        title = request.form['title']
+        description = request.form['description']
+        photo_file = request.files['poster']
+
+        filename = secure_filename(photo_file.filename)
+        photo_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        
+        movie = Movie(title=title, description=description, poster=filename)
+
+        db.session.add(movie)
+        db.session.commit()
+
+        response = {
+            "message": "Movie successfully added",
+            "title": movie.title,
+            "poster": movie.poster,
+            "description": movie.description,
+        }
+        return jsonify(response), 200
+    else:
+        errors = form_errors(form)
+        response = {"errors": errors}
+        return jsonify(response), 400
 
 ###
 # Routing for your application.
